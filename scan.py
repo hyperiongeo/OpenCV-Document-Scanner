@@ -16,13 +16,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cv2
 
-from pyimagesearch import transform
-from pyimagesearch import imutils
 from scipy.spatial import distance as dist
 from matplotlib.patches import Polygon
 import polygon_interacter as poly_i
 
-class DocScanner(object):
+from pyimagesearch import transform, imutils
+
+class DocScanner():
     """An image scanner"""
 
     def __init__(self, interactive=False, MIN_QUAD_AREA_RATIO=0.25, MAX_QUAD_ANGLE_RANGE=40):
@@ -47,9 +47,9 @@ class DocScanner(object):
                        for representative in representatives)
 
         filtered_corners = []
-        for c in corners:
-            if predicate(filtered_corners, c):
-                filtered_corners.append(c)
+        for crn in corners:
+            if predicate(filtered_corners, crn):
+                filtered_corners.append(crn)
         return filtered_corners
 
     def angle_between_vectors_degrees(self, u, v):
@@ -123,10 +123,8 @@ class DocScanner(object):
             lines = []
 
             # find the horizontal lines (connected-components -> bounding boxes -> final lines)
-            contours = cv2.findContours(horizontal_lines_canvas, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-            contours = contours[1]
-            print(contours)
-            print(cv2.arcLength(contours, True))
+            contours, __ = cv2.findContours(horizontal_lines_canvas, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+
             contours = sorted(contours, key=lambda c: cv2.arcLength(c, True), reverse=True)[:2]
             horizontal_lines_canvas = np.zeros(img.shape, dtype=np.uint8)
             for contour in contours:
@@ -141,16 +139,26 @@ class DocScanner(object):
                 corners.append((max_x, right_y))
 
             # find the vertical lines (connected-components -> bounding boxes -> final lines)
-            contours = cv2.findContours(vertical_lines_canvas, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-            contours = contours[1]
+            contours, __ = cv2.findContours(vertical_lines_canvas, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+            # contours = cv2.findContours(thresh.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE)
             contours = sorted(contours, key=lambda c: cv2.arcLength(c, True), reverse=True)[:2]
             vertical_lines_canvas = np.zeros(img.shape, dtype=np.uint8)
             for contour in contours:
                 contour = contour.reshape((contour.shape[0], contour.shape[2]))
                 min_y = np.amin(contour[:, 1], axis=0) + 2
                 max_y = np.amax(contour[:, 1], axis=0) - 2
-                top_x = int(np.average(contour[contour[:, 1] == min_y][:, 0]))
-                bottom_x = int(np.average(contour[contour[:, 1] == max_y][:, 0]))
+
+                min_avg = np.average(contour[contour[:, 1] == min_y][:, 0])
+                if ~np.isnan(min_avg):
+                    top_x = int(min_avg)
+                else:
+                    top_x = 0
+                max_avg = np.average(contour[contour[:, 1] == max_y][:, 0])
+                if ~np.isnan(max_avg):
+                    bottom_x = int(max_avg)
+                else:
+                    bottom_x = 0
+
                 lines.append((top_x, min_y, bottom_x, max_y))
                 cv2.line(vertical_lines_canvas, (top_x, min_y), (bottom_x, max_y), 1, 1)
                 corners.append((top_x, min_y))
@@ -229,13 +237,13 @@ class DocScanner(object):
 
         # also attempt to find contours directly from the edged image, which occasionally
         # produces better results
-        (_, cnts, hierarchy) = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        cnts, __ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         cnts = sorted(cnts, key=cv2.contourArea, reverse=True)[:5]
 
         # loop over the contours
-        for c in cnts:
+        for cnt in cnts:
             # approximate the contour
-            approx = cv2.approxPolyDP(c, 80, True)
+            approx = cv2.approxPolyDP(cnt, 80, True)
             if self.is_valid_contour(approx, IM_WIDTH, IM_HEIGHT):
                 approx_contours.append(approx)
                 break
@@ -284,7 +292,6 @@ class DocScanner(object):
 
         # get the contour of the document
         screenCnt = self.get_contour(rescaled_image)
-        print(screenCnt)
 
         if self.interactive:
             screenCnt = self.interactive_get_contour(screenCnt, rescaled_image)
@@ -336,6 +343,5 @@ if __name__ == "__main__":
     else:
         im_files = [f for f in os.listdir(im_dir) if get_ext(f) in valid_formats]
         for im in im_files:
-            print(im_dir, im, os.path.join(path, im_dir,im))
-            # scanner.scan(im_dir + '/' + im)
+            # print(im_dir, im)
             scanner.scan(os.path.join(path, im_dir, im))
